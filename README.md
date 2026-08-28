@@ -2,15 +2,17 @@
 
 A weather briefing for a motorcycle route, not for a place.
 
-Point forecasts answer "what is the weather in xyz". That is the wrong question when you are riding/driving, because you will be in one place at 13:40 and somewhere over a 1883 m pass at 11:10. This tool forecasts **every stop at the hour you actually arrive there**, compares four numerical weather models at each one, and shows you where they disagree.
+Point forecasts answer "what is the weather in Bolzano". That is the wrong question when you are riding, because you will be in Bolzano at 13:40 and somewhere over a 1883 m pass at 11:10. This tool forecasts **every stop at the hour you actually arrive there**, compares four numerical weather models at each one, and shows you where they disagree.
 
 Single HTML file. No build step, no dependencies, no backend, no API key. Everything runs in the browser.
-
-Optimized for motorcycling. 
 
 ## What it does
 
 - Load one or more GPX files, or type a handful of coordinates
+- Every stop shows its distance along the route and its elevation, which are always true
+- Stops are named by reverse geocoding where a settlement is genuinely close, hedged to "near X" between 2.5 and 12 km, and left unnamed beyond that
+- Tap any stop name to rename it to whatever you actually call it
+- An optional map per route, with each stop coloured by its verdict
 - Load several variants of the same trip and compare them side by side, cleanest one marked
 - Drag the departure time from 05:00 to 16:00 and watch every arrival time and forecast re-time instantly
 - A departure window bar scans the whole morning and marks the best start
@@ -56,6 +58,7 @@ CAPE is only counted after 11:00, since alpine convection is a diurnal signal. I
 Worth knowing before you trust it:
 
 - **No radar and no nowcast.** In the last few hours before departure, radar beats any model. Use this to plan, use radar to decide.
+- **Place names are approximate by nature.** In remote terrain the nearest settlement can be kilometres away, so the map and the km marker are the reliable way to locate a stop. The name is a convenience, not a position.
 - **Routes are sampled to nine stops** regardless of length. Fine for a 250 km day, coarse for a 700 km one.
 - **Gridbox smoothing.** Even a 2 km model cannot resolve which side of a ridge a shower lands on. Precipitation in complex terrain is a probability spread over a valley, not a promise about your road.
 - **Travel times are a speed estimate**, not routed. Straight-line distance is inflated by a winding factor of 1.30 for mountain roads and 1.16 for motorways. Adjust the per-route speed until the arrival times look right.
@@ -74,6 +77,10 @@ On iOS, Share → Add to Home Screen gives it an app icon and full-screen chrome
 ## Data
 
 Forecast data by [Open-Meteo](https://open-meteo.com/), licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), serving DWD ICON, ECMWF IFS and Météo-France ARPEGE.
+
+Place names from [Nominatim](https://nominatim.openstreetmap.org/), map tiles from [OpenStreetMap](https://www.openstreetmap.org/copyright), both © OpenStreetMap contributors under the [ODbL](https://opendatacommons.org/licenses/odbl/). Lookups are throttled to one per second and cached permanently in the browser, so a route costs nine requests once and nothing thereafter. If you fork this and expect real traffic, move to a paid geocoder rather than leaning on the volunteer-funded service.
+
+[Leaflet](https://leafletjs.com/) is loaded from a CDN and is the only dependency.
 
 ## Licence
 

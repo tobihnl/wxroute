@@ -15,6 +15,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js" defer></script>
 <style>
 
 :root{ --ink:#131E29; --paper:#D9DFDC; --panel:#F3F5F2; --rule:#A8B3AD;
@@ -101,7 +103,9 @@ input[type=range]{ width:100%; accent-color:var(--ink); }
 .legtop{ display:flex; gap:8px; align-items:baseline; }
 .eta{ font-family:'IBM Plex Mono',monospace; font-size:14px; font-weight:600; }
 .place{ font-size:14px; font-weight:500; flex:1; min-width:0; overflow:hidden;
-        text-overflow:ellipsis; white-space:nowrap; }
+        text-overflow:ellipsis; white-space:nowrap; cursor:text;
+        text-decoration:underline; text-decoration-style:dotted;
+        text-decoration-color:var(--rule); text-underline-offset:3px; }
 .elev{ font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--soft); }
 .metrics{ font-family:'IBM Plex Mono',monospace; font-size:12px; margin-top:3px; white-space:pre; }
 .flags{ font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.08em;
@@ -123,6 +127,12 @@ input[type=range]{ width:100%; accent-color:var(--ink); }
 .whr{ font-family:'IBM Plex Mono',monospace; font-size:9px; color:var(--soft); margin-top:3px; }
 .wcell.best .whr{ color:var(--ink); font-weight:600; }
 
+.mapwrap{ height:220px; border-bottom:1px solid var(--rule); }
+.maptoggle{ font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.1em;
+            text-transform:uppercase; color:var(--soft); background:none;
+            border:none; border-bottom:1px solid var(--rule); width:100%;
+            padding:7px 12px; text-align:left; cursor:pointer; }
+.leaflet-container{ font-family:'IBM Plex Sans',sans-serif; background:var(--panel); }
 .note{ font-size:12px; line-height:1.5; color:var(--soft); }
 .warn{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--amber); line-height:1.5; }
 a{ color:var(--ink); }
@@ -220,6 +230,49 @@ function readRoutes(){
   return memRoutes;
 }
 
+/* ---------------- place names ---------------- */
+
+// GPX track points carry no names, so stops arrive as "Point 4". Nominatim turns
+// them back into villages. Throttled to one request a second per their usage
+// policy, and cached in localStorage so a route is only ever looked up once.
+var geoQueue = Promise.resolve();
+
+function reverseName(lat, lon){
+  var key = "wxroute.geo." + lat.toFixed(3) + "," + lon.toFixed(3);
+  try{ var hit = localStorage.getItem(key); if(hit) return Promise.resolve(hit); }catch(e){}
+  geoQueue = geoQueue.then(function(){ return new Promise(function(go){ setTimeout(go, 1100); }); });
+  return geoQueue.then(function(){
+    return fetch("https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=13&lat="+
+                 lat+"&lon="+lon)
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        var a = j.address || {};
+        var n = a.village || a.town || a.city || a.municipality || a.hamlet ||
+                a.suburb || a.locality || null;
+        if(!n) return null;
+        // In remote terrain the nearest settlement can be a long way off. Say so
+        // rather than pretending the stop is in it.
+        var away = (j.lat && j.lon)
+          ? haversine({lat:parseFloat(j.lat), lon:parseFloat(j.lon)}, {lat:lat, lon:lon})
+          : 0;
+        if(away > 12) return null;
+        if(away > 2.5) n = "near " + n;
+        try{ localStorage.setItem(key, n); }catch(e){}
+        return n;
+      }).catch(function(){ return null; });
+  });
+}
+
+function nameRoute(route){
+  var jobs = route.pts.map(function(p, i){
+    if(p.n && !/^(Point|Stop) \d+$/.test(p.n)) return Promise.resolve();
+    return reverseName(p.lat, p.lon).then(function(n){
+      if(n) route.pts[i].n = n;
+    });
+  });
+  return Promise.all(jobs).then(function(){ saveRoutes(); render(); });
+}
+
 /* ---------------- state ---------------- */
 
 var state = {
@@ -228,7 +281,7 @@ var state = {
   active: MODELS.map(function(m){ return m.id; }),
   routes: [],
   data: {}, dead: [], status: {}, net: null,
-  open: {}, loading: false, error: null, issued: null
+  open: {}, mapOpen: {}, maps: {}, loading: false, error: null, issued: null
 };
 
 /* ---------------- helpers ---------------- */
@@ -499,13 +552,19 @@ function render(){
       '<div class="stat"><b>'+(br.minTemp!=null&&br.minTemp<99?Math.round(br.minTemp)+"°":"–")+'</b><span>min temp</span></div>'+
     '</div>';
 
+    html += '<button class="maptoggle" data-map="'+r.id+'">'+
+            (state.mapOpen[r.id] ? '&#9662; hide map' : '&#9656; show map')+'</button>';
+    if(state.mapOpen[r.id]) html += '<div class="mapwrap" id="map-'+r.id+'"></div>';
+
     br.legs.forEach(function(l,i){
       var c = l.level!=null ? LEVELS[l.level].color : "#A8B3AD";
       var key = r.id+"-"+i;
       html += '<div class="leg'+(i===0?" first":"")+(i===br.legs.length-1?" last":"")+
               '"><div class="spine"><div class="node" style="background:'+c+'"></div></div><div class="legbody">';
-      html += '<div class="legtop"><div class="eta">'+clock(l.eta)+'</div><div class="place">'+esc(l.name)+
-              '</div><div class="elev">'+(l.elev!=null?Math.round(l.elev)+" m":"")+'</div></div>';
+      var where = "km "+l.km + (l.elev!=null ? " · "+Math.round(l.elev)+" m" : "");
+      html += '<div class="legtop"><div class="eta">'+clock(l.eta)+
+              '</div><div class="place" data-edit="'+r.id+'|'+i+'">'+esc(l.name)+
+              '</div><div class="elev">'+where+'</div></div>';
       if(l.level==null){
         html += '<div class="metrics" style="color:var(--soft)">no model data</div>';
       } else {
@@ -553,6 +612,44 @@ function render(){
     }
     return html+'</div>';
   }).join("");
+
+  mountMaps(briefs);
+}
+
+// Leaflet instances do not survive an innerHTML rebuild, so they are recreated
+// from scratch each render for whichever routes have their map open.
+function mountMaps(briefs){
+  if(typeof L === "undefined") return;
+  Object.keys(state.maps).forEach(function(k){
+    try{ state.maps[k].remove(); }catch(e){}
+    delete state.maps[k];
+  });
+  briefs.forEach(function(b){
+    var r = b.route;
+    if(!state.mapOpen[r.id]) return;
+    var el = document.getElementById("map-"+r.id);
+    if(!el) return;
+
+    var map = L.map(el, { scrollWheelZoom:false, attributionControl:true });
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 17,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    }).addTo(map);
+
+    var line = (r.track && r.track.length ? r.track : r.pts).map(function(p){ return [p.lat, p.lon]; });
+    L.polyline(line, { color:"#131E29", weight:3, opacity:0.6 }).addTo(map);
+
+    b.brief.legs.forEach(function(l, i){
+      var p = r.pts[i];
+      var col = l.level!=null ? LEVELS[l.level].color : "#5C6B65";
+      L.circleMarker([p.lat, p.lon], {
+        radius:7, color:"#F3F5F2", weight:2, fillColor:col, fillOpacity:1
+      }).addTo(map).bindTooltip(clock(l.eta)+"  "+p.n, { direction:"top" });
+    });
+
+    map.fitBounds(L.latLngBounds(line), { padding:[24,24] });
+    state.maps[r.id] = map;
+  });
 }
 
 /* ---------------- route input ---------------- */
@@ -563,7 +660,7 @@ function sample(raw, N){
   for(var i=0;i<N;i++){
     var target = total*i/(N-1), best=0;
     for(var j=0;j<cum.length;j++) if(Math.abs(cum[j]-target)<Math.abs(cum[best]-target)) best=j;
-    out.push({ n: raw[best].name || ("Point "+(i+1)), lat:raw[best].lat, lon:raw[best].lon });
+    out.push({ n: raw[best].name || ("Stop "+(i+1)), lat:raw[best].lat, lon:raw[best].lon });
   }
   return out;
 }
@@ -593,7 +690,10 @@ function handleGpx(file){
       if(raw.length<2){ res(null); return; }
       var t = doc.getElementsByTagName("name")[0];
       var nm = (t && t.textContent ? t.textContent : file.name.replace(/\.gpx$/i,"")).trim().slice(0,40);
-      res({ name: nm || "Route", pts: sample(raw, 9), count: raw.length });
+      var track = sample(raw, Math.min(120, raw.length)).map(function(p){
+        return { lat:p.lat, lon:p.lon };
+      });
+      res({ name: nm || "Route", pts: sample(raw, 9), track: track, count: raw.length });
     };
     reader.onerror = function(){ res(null); };
     reader.readAsText(file);
@@ -617,6 +717,19 @@ document.getElementById("chips").addEventListener("click", function(e){
   render();
 });
 document.getElementById("routes").addEventListener("click", function(e){
+  var ed = e.target.closest("[data-edit]");
+  if(ed){
+    var ref = ed.getAttribute("data-edit").split("|");
+    var route = state.routes.filter(function(r){ return r.id===ref[0]; })[0];
+    if(route){
+      var cur = route.pts[ref[1]].n;
+      var val = prompt("Name this stop", cur);
+      if(val !== null && val.trim()){ route.pts[ref[1]].n = val.trim().slice(0,40); saveRoutes(); render(); }
+    }
+    return;
+  }
+  var m = e.target.closest("[data-map]");
+  if(m){ var id = m.getAttribute("data-map"); state.mapOpen[id] = !state.mapOpen[id]; render(); return; }
   var b = e.target.closest("[data-key]"); if(!b) return;
   var k = b.getAttribute("data-key"); state.open[k] = !state.open[k]; render();
 });
@@ -643,13 +756,18 @@ document.getElementById("gpx").addEventListener("change", function(e){
   Promise.all(files.map(handleGpx)).then(function(rs){
     var added = rs.filter(Boolean);
     if(!added.length){ state.error = "No usable track or route points in that file."; render(); return; }
+    var fresh = [];
     added.forEach(function(a){
-      state.routes = state.routes.concat([{
-        id:"r"+Date.now()+Math.floor(Math.random()*1000), name:a.name, pts:a.pts, kmh:60,
+      var route = {
+        id:"r"+Date.now()+Math.floor(Math.random()*1000), name:a.name, pts:a.pts,
+        track:a.track, kmh:60,
         note:a.count+" GPX points, sampled to "+a.pts.length
-      }]);
+      };
+      fresh.push(route);
+      state.routes = state.routes.concat([route]);
     });
     saveRoutes(); load();
+    fresh.forEach(nameRoute);
   });
 });
 document.getElementById("coordBtn").addEventListener("click", function(){
