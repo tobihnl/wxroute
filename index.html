@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="description" content="Multi-model weather briefing along a motorcycle route. Load a GPX, every stop is forecast for the hour you actually arrive, and four models are compared." />
+<meta name="color-scheme" content="light" />
+<meta name="theme-color" content="#D9DFDC" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="wxroute" />
+<meta property="og:title" content="wxroute" />
+<meta property="og:description" content="Multi-model weather briefing along a motorcycle route, timed to when you actually arrive." />
+<meta property="og:type" content="website" />
+<title>wxroute</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" />
+<style>
+
+:root{ --ink:#131E29; --paper:#D9DFDC; --panel:#F3F5F2; --rule:#A8B3AD;
+       --soft:#5C6B65; --amber:#B77B00; }
+*{ box-sizing:border-box; }
+body{ margin:0; background:var(--paper); color:var(--ink);
+      font-family:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+      padding:14px 12px 48px; -webkit-text-size-adjust:100%; }
+h1{ font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:40px;
+    line-height:0.9; letter-spacing:0.01em; text-transform:lowercase; margin:0; }
+.tag{ font-family:'Barlow Condensed',sans-serif; font-weight:600; font-size:17px;
+      text-transform:uppercase; letter-spacing:0.06em; color:var(--soft); margin-top:1px; }
+.sub{ font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.08em;
+      text-transform:uppercase; color:var(--soft); margin-top:5px; }
+.rule{ height:2px; background:var(--ink); margin:10px 0 14px; }
+.hair{ height:1px; background:var(--rule); margin:10px 0; }
+
+.panel{ background:var(--panel); border:1px solid var(--rule); padding:12px; margin-bottom:12px; }
+.lbl{ font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.12em;
+      text-transform:uppercase; color:var(--soft); display:block; margin-bottom:6px; }
+input[type=date],textarea,input[type=number],input[type=text]{
+      font-family:'IBM Plex Mono',monospace; font-size:15px; padding:8px;
+      border:1px solid var(--rule); background:#fff; color:var(--ink); width:100%;
+      border-radius:0; -webkit-appearance:none; }
+textarea{ min-height:78px; font-size:13px; }
+input[type=range]{ width:100%; accent-color:var(--ink); }
+
+.chips{ display:flex; flex-wrap:wrap; gap:6px; }
+.chip{ font-family:'IBM Plex Mono',monospace; font-size:11px; padding:6px 10px;
+       border:1px solid var(--rule); background:#fff; color:var(--ink);
+       letter-spacing:0.04em; cursor:pointer; }
+.chip.on{ background:var(--ink); color:var(--paper); border-color:var(--ink); }
+.chip.dead{ opacity:0.4; text-decoration:line-through; }
+
+.btn{ font-family:'Barlow Condensed',sans-serif; text-transform:uppercase;
+      letter-spacing:0.06em; font-weight:700; font-size:16px; background:var(--ink);
+      color:var(--paper); border:none; padding:12px 16px; width:100%; cursor:pointer; }
+.btn.ghost{ background:transparent; color:var(--ink); border:1px solid var(--ink); }
+.btn+.btn{ margin-top:6px; }
+
+.depart{ font-family:'IBM Plex Mono',monospace; font-size:26px; font-weight:600; }
+
+.mgr{ display:flex; align-items:center; gap:8px; padding:7px 0;
+      border-bottom:1px solid var(--rule); }
+.mgr:last-of-type{ border-bottom:none; }
+.mgrname{ flex:1; min-width:0; font-size:14px; overflow:hidden;
+          text-overflow:ellipsis; white-space:nowrap; }
+.mgrkm{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--soft); }
+.spd{ width:56px; flex:0 0 56px; font-family:'IBM Plex Mono',monospace;
+      font-size:13px; padding:5px 6px; border:1px solid var(--rule); background:#fff; }
+.del{ background:none; border:1px solid var(--rule); color:var(--soft);
+      font-family:'IBM Plex Mono',monospace; font-size:13px; padding:4px 9px; cursor:pointer; }
+
+.empty{ text-align:center; padding:26px 12px; }
+.empty .big{ font-family:'Barlow Condensed',sans-serif; font-size:22px;
+             text-transform:uppercase; letter-spacing:0.03em; font-weight:700; }
+.empty .small{ font-size:12px; color:var(--soft); margin-top:6px; line-height:1.5; }
+
+.route{ border:1px solid var(--rule); background:var(--panel); margin-bottom:14px; }
+.rhead{ display:flex; align-items:baseline; gap:8px; padding:11px 12px 9px;
+        border-bottom:1px solid var(--rule); }
+.rname{ font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:22px;
+        text-transform:uppercase; letter-spacing:0.02em; }
+.rnote{ font-size:11px; color:var(--soft); padding:0 12px 9px; border-bottom:1px solid var(--rule); }
+.verdict{ font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:600;
+          letter-spacing:0.08em; text-transform:uppercase; color:#fff;
+          padding:3px 7px; margin-left:auto; white-space:nowrap; }
+
+.stats{ display:grid; grid-template-columns:repeat(4,1fr); border-bottom:1px solid var(--rule); }
+.stat{ padding:8px 4px; text-align:center; border-right:1px solid var(--rule); }
+.stat:last-child{ border-right:none; }
+.stat b{ font-family:'IBM Plex Mono',monospace; font-size:15px; font-weight:600; display:block; }
+.stat span{ font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.06em;
+            text-transform:uppercase; color:var(--soft); }
+
+.leg{ display:flex; gap:10px; padding:9px 12px; border-bottom:1px solid var(--rule); }
+.leg:last-of-type{ border-bottom:none; }
+.spine{ width:14px; flex:0 0 14px; position:relative; }
+.spine::before{ content:''; position:absolute; left:6px; top:0; bottom:0; width:1px; background:var(--rule); }
+.leg.first .spine::before{ top:9px; }
+.leg.last .spine::before{ bottom:calc(100% - 9px); }
+.node{ position:absolute; left:1px; top:4px; width:11px; height:11px; border:2px solid var(--panel); }
+.legbody{ flex:1; min-width:0; }
+.legtop{ display:flex; gap:8px; align-items:baseline; }
+.eta{ font-family:'IBM Plex Mono',monospace; font-size:14px; font-weight:600; }
+.place{ font-size:14px; font-weight:500; flex:1; min-width:0; overflow:hidden;
+        text-overflow:ellipsis; white-space:nowrap; }
+.elev{ font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--soft); }
+.metrics{ font-family:'IBM Plex Mono',monospace; font-size:12px; margin-top:3px; white-space:pre; }
+.flags{ font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.08em;
+        text-transform:uppercase; margin-top:2px; }
+.agree{ display:flex; gap:2px; margin-top:5px; align-items:center; }
+.sq{ width:11px; height:11px; border:1px solid var(--rule); }
+.agreelbl{ font-family:'IBM Plex Mono',monospace; font-size:9px; color:var(--soft);
+           margin-left:5px; letter-spacing:0.06em; }
+.toggle{ font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.08em;
+         text-transform:uppercase; color:var(--soft); background:none; border:none;
+         padding:5px 0 0; cursor:pointer; }
+.detail{ font-family:'IBM Plex Mono',monospace; font-size:11px; margin-top:7px;
+         border-top:1px dashed var(--rule); padding-top:6px; }
+.drow{ display:flex; gap:8px; padding:1px 0; }
+.dm{ width:60px; flex:0 0 60px; color:var(--soft); }
+
+.window{ display:flex; gap:2px; padding:8px 12px 12px; align-items:flex-end; }
+.wcell{ flex:1; text-align:center; }
+.whr{ font-family:'IBM Plex Mono',monospace; font-size:9px; color:var(--soft); margin-top:3px; }
+.wcell.best .whr{ color:var(--ink); font-weight:600; }
+
+.note{ font-size:12px; line-height:1.5; color:var(--soft); }
+.warn{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--amber); line-height:1.5; }
+a{ color:var(--ink); }
+</style>
+</head>
+<body>
+<noscript><p style="font-family:sans-serif">This tool needs JavaScript. It runs entirely in your browser and calls the Open-Meteo API directly.</p></noscript>
+
+<h1>wxroute</h1>
+<div class="tag">Route weather briefing</div>
+<div class="sub" id="sub">no routes loaded</div>
+<div class="rule"></div>
+
+<div class="panel">
+  <span class="lbl">Routes</span>
+  <div id="mgr"></div>
+  <div class="hair"></div>
+  <button class="btn ghost" id="gpxBtn">Load GPX</button>
+  <button class="btn ghost" id="coordBtn">Enter coordinates</button>
+  <input type="file" id="gpx" accept=".gpx,application/gpx+xml,text/xml" multiple style="display:none" />
+  <div id="coordBox" style="display:none">
+    <div class="hair"></div>
+    <span class="lbl">One stop per line: name, lat, lon</span>
+    <textarea id="coordText" placeholder="Riva di Solto, 45.775, 10.055&#10;Passo Tonale, 46.259, 10.586&#10;Bolzano, 46.50, 11.35"></textarea>
+    <input type="text" id="coordName" placeholder="Route name" style="margin-top:6px" />
+    <button class="btn" id="coordAdd" style="margin-top:6px">Add route</button>
+  </div>
+</div>
+
+<div class="panel" id="controls" style="display:none">
+  <label class="lbl" for="date">Ride date</label>
+  <input type="date" id="date" />
+  <div class="hair"></div>
+  <label class="lbl">Departure</label>
+  <div class="depart" id="departLabel">08:00</div>
+  <input type="range" id="depart" min="5" max="16" step="0.5" value="8" />
+  <div class="hair"></div>
+  <label class="lbl">Models compared</label>
+  <div class="chips" id="chips"></div>
+  <div id="deadNote"></div>
+</div>
+
+<div id="status"></div>
+<div id="routes"></div>
+
+<div class="panel">
+  <span class="lbl">How to read it</span>
+  <div class="note">Each stop is scored at the hour you would actually be there, from your
+    departure time and the average speed set for that route. Rain flags start at 0.6 mm/h and
+    turn serious at 1.5. The colour follows what most models agree on, so a single wet outlier
+    cannot set the verdict. The squares show every model, and the mm figure shows the wettest
+    one after a slash when they disagree.</div>
+  <div class="hair"></div>
+  <div class="note">CAPE above 800 after 11:00 is the alpine convection signal. It says the
+    atmosphere is willing, not that a cell will hit your road. That last part is a radar
+    question.</div>
+  <div class="hair"></div>
+  <div class="note" style="font-size:11px">Forecast data by
+    <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open-Meteo</a> (CC BY 4.0),
+    serving DWD ICON, ECMWF IFS and Météo-France ARPEGE. No radar, no nowcast.</div>
+</div>
+
+<script>
+/* ---------------- config ---------------- */
+
+var MODELS = [
+  { id:"icon_d2", label:"ICON-D2", detail:"DWD 2 km, 48 h" },
+  { id:"icon_eu", label:"ICON-EU", detail:"DWD 7 km, 5 d" },
+  { id:"ecmwf_ifs025", label:"ECMWF", detail:"IFS 25 km, 10 d" },
+  { id:"meteofrance_arpege_europe", label:"ARPEGE", detail:"MF 11 km, 4 d" }
+];
+
+var CORE  = "temperature_2m,precipitation,wind_speed_10m,wind_gusts_10m,cloud_cover";
+var EXTRA = "cape,freezing_level_height";
+
+var LEVELS = [
+  { label:"Good", color:"#1F7A4C" },
+  { label:"Marginal", color:"#1E63A8" },
+  { label:"Poor", color:"#C0392B" },
+  { label:"Storm risk", color:"#8E44AD" }
+];
+
+/* ---------------- storage ---------------- */
+
+var memRoutes = [];
+function saveRoutes(){
+  try{ localStorage.setItem("wxroute.routes", JSON.stringify(state.routes)); }
+  catch(e){ memRoutes = state.routes; }
+}
+function readRoutes(){
+  try{
+    var s = localStorage.getItem("wxroute.routes");
+    if(s){ var j = JSON.parse(s); if(Array.isArray(j)) return j; }
+  }catch(e){}
+  return memRoutes;
+}
+
+/* ---------------- state ---------------- */
+
+var state = {
+  date: isoDate(new Date()),
+  depart: 8,
+  active: MODELS.map(function(m){ return m.id; }),
+  routes: [],
+  data: {}, dead: [], status: {}, net: null,
+  open: {}, loading: false, error: null, issued: null
+};
+
+/* ---------------- helpers ---------------- */
+
+function pad(n){ return String(n).padStart(2,"0"); }
+function isoDate(d){ return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
+function clock(h){ var t=Math.round(h*60); return pad(Math.floor(t/60)%24)+":"+pad(t%60); }
+function esc(s){ return String(s).replace(/[&<>"]/g,function(c){
+  return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); }
+
+function haversine(a,b){
+  var R=6371, dLat=(b.lat-a.lat)*Math.PI/180, dLon=(b.lon-a.lon)*Math.PI/180;
+  var la1=a.lat*Math.PI/180, la2=b.lat*Math.PI/180;
+  var h=Math.pow(Math.sin(dLat/2),2)+Math.cos(la1)*Math.cos(la2)*Math.pow(Math.sin(dLon/2),2);
+  return 2*R*Math.asin(Math.sqrt(h));
+}
+function cumulative(pts){ var d=0; return pts.map(function(p,i){ if(i>0) d+=haversine(pts[i-1],p); return d; }); }
+function winding(kmh){ return kmh>80 ? 1.16 : 1.30; }
+
+function consensus(levels){
+  var s = levels.slice().sort(function(a,b){ return a-b; });
+  return s[Math.floor(s.length/2)];
+}
+
+function assess(v,hour){
+  var level=0, flags=[];
+  function bump(l,f){ if(l>level) level=l; if(f && flags.indexOf(f)<0) flags.push(f); }
+  if(v.precip!=null){
+    if(v.precip>=1.5) bump(2,"rain");
+    else if(v.precip>=0.6) bump(1,"showers");
+  }
+  if(v.gust!=null){ if(v.gust>=60) bump(2,"gusts"); else if(v.gust>=40) bump(1,"wind"); }
+  if(v.cape!=null && hour>=11){ if(v.cape>=1500) bump(3,"storms"); else if(v.cape>=800) bump(2,"convection"); }
+  if(v.temp!=null){ if(v.temp<=3) bump(2,"cold"); else if(v.temp<=8) bump(1,"chilly"); }
+  return { level:level, flags:flags };
+}
+
+/* ---------------- fetching ---------------- */
+
+function attempt(pts, modelId, date, vars){
+  var lat = pts.map(function(p){ return p.lat.toFixed(4); }).join(",");
+  var lon = pts.map(function(p){ return p.lon.toFixed(4); }).join(",");
+  var url = "https://api.open-meteo.com/v1/forecast?latitude="+lat+"&longitude="+lon+
+            "&hourly="+vars+"&models="+modelId+"&timezone=auto"+
+            "&start_date="+date+"&end_date="+date;
+  return fetch(url).then(function(r){
+    return r.json().catch(function(){ throw new Error("HTTP "+r.status); }).then(function(j){
+      if(!r.ok || (j && j.error)) throw new Error((j && j.reason) ? j.reason : ("HTTP "+r.status));
+      return Array.isArray(j) ? j : [j];
+    });
+  });
+}
+
+function fetchModel(pts, modelId, date){
+  return attempt(pts, modelId, date, CORE+","+EXTRA).catch(function(err){
+    return attempt(pts, modelId, date, CORE).then(function(locs){
+      locs.reduced = true; return locs;
+    }).catch(function(){ throw err; });
+  });
+}
+
+function pool(tasks, limit){
+  var i=0;
+  function next(){ if(i>=tasks.length) return Promise.resolve(); return tasks[i++]().then(next); }
+  var runners=[]; for(var k=0;k<Math.min(limit,tasks.length);k++) runners.push(next());
+  return Promise.all(runners);
+}
+
+function probe(){
+  return fetch("https://api.open-meteo.com/v1/forecast?latitude=46.5&longitude=11.35&current=temperature_2m")
+    .then(function(r){ return r.json().then(function(j){
+      if(!r.ok || (j && j.error)) return "API refused: "+((j && j.reason) || ("HTTP "+r.status));
+      return "ok"; }); })
+    .catch(function(e){
+      return (e instanceof TypeError)
+        ? "blocked: this page is not allowed to reach api.open-meteo.com. Serve it over https from a real host."
+        : "network error: "+(e.message || e);
+    });
+}
+
+function load(){
+  if(!state.routes.length){ state.loading=false; state.data={}; render(); return; }
+  state.loading = true; state.error = null; state.status = {}; render();
+  probe().then(function(p){
+    state.net = p;
+    if(p !== "ok"){ state.loading = false; render(); return; }
+    return run();
+  });
+}
+
+function run(){
+  var next = {}, missing = [], jobs = [];
+  state.routes.forEach(function(r){
+    next[r.id] = {};
+    MODELS.forEach(function(m){
+      jobs.push(function(){
+        return fetchModel(r.pts, m.id, state.date).then(function(locs){
+          var usable = locs.some(function(l){
+            return ((l.hourly && l.hourly.temperature_2m) || []).some(function(v){ return v!=null; });
+          });
+          if(usable){
+            next[r.id][m.id] = locs;
+            if(!state.status[m.id]) state.status[m.id] = locs.reduced ? "no CAPE at this model" : "ok";
+          } else {
+            if(missing.indexOf(m.id)<0) missing.push(m.id);
+            state.status[m.id] = "no data for "+state.date;
+          }
+        }).catch(function(err){
+          if(missing.indexOf(m.id)<0) missing.push(m.id);
+          state.status[m.id] = String(err.message||err).slice(0,90);
+        });
+      });
+    });
+  });
+  return pool(jobs, 4).then(function(){
+    state.data = next;
+    state.dead = missing.filter(function(id){
+      return !state.routes.some(function(r){ return next[r.id][id]; });
+    });
+    state.issued = new Date();
+    state.loading = false;
+    var any = Object.keys(next).some(function(k){ return Object.keys(next[k]).length; });
+    if(!any) state.error = "Every model request failed. Reasons are listed under the model row.";
+    render();
+  });
+}
+
+/* ---------------- briefing ---------------- */
+
+function liveModels(){ return state.active.filter(function(id){ return state.dead.indexOf(id)<0; }); }
+
+function build(route, departHour){
+  var cum = cumulative(route.pts), f = winding(route.kmh), live = liveModels();
+  var legs = route.pts.map(function(p,i){
+    var km = cum[i]*f;
+    var eta = departHour + km/route.kmh;
+    var idx = Math.max(0, Math.min(23, Math.round(eta)));
+    var per = [];
+    live.forEach(function(mid){
+      var loc = state.data[route.id] && state.data[route.id][mid] && state.data[route.id][mid][i];
+      if(!loc || !loc.hourly) return;
+      var h = loc.hourly;
+      var v = {
+        temp: h.temperature_2m ? h.temperature_2m[idx] : null,
+        precip: h.precipitation ? h.precipitation[idx] : null,
+        gust: h.wind_gusts_10m ? h.wind_gusts_10m[idx] : null,
+        cape: h.cape ? h.cape[idx] : null,
+        fl: h.freezing_level_height ? h.freezing_level_height[idx] : null
+      };
+      if(v.temp==null) return;
+      var a = assess(v, idx);
+      per.push({ mid:mid, v:v, level:a.level, flags:a.flags, elev:loc.elevation });
+    });
+    function agg(k, fn){
+      var xs = per.map(function(p){ return p.v[k]; }).filter(function(x){ return x!=null; });
+      if(!xs.length) return null;
+      if(fn==="max") return Math.max.apply(null,xs);
+      if(fn==="med"){
+        var s = xs.slice().sort(function(a,b){ return a-b; });
+        return s.length%2 ? s[(s.length-1)/2] : (s[s.length/2-1]+s[s.length/2])/2;
+      }
+      return xs.reduce(function(a,b){return a+b;},0)/xs.length;
+    }
+    var flags=[]; per.forEach(function(p){ p.flags.forEach(function(x){ if(flags.indexOf(x)<0) flags.push(x); }); });
+    return {
+      name:p.n, km:Math.round(km), eta:eta,
+      elev: per.length ? per[0].elev : null,
+      level: per.length ? consensus(per.map(function(p){return p.level;})) : null,
+      worst: per.length ? Math.max.apply(null, per.map(function(p){return p.level;})) : null,
+      concern: per.filter(function(p){ return p.level>0; }).length,
+      total: per.length, flags:flags, per:per,
+      temp: agg("temp"), precip: agg("precip","med"), precipHi: agg("precip","max"),
+      gust: agg("gust","max"), cape: agg("cape","max")
+    };
+  });
+  var scored = legs.filter(function(l){ return l.level!=null; });
+  return {
+    legs:legs,
+    worst: scored.length ? Math.max.apply(null, scored.map(function(l){return l.level;})) : null,
+    score: scored.reduce(function(a,l){ return a + l.level*(1 + l.concern/(l.total||1)); }, 0),
+    hours: legs.length ? legs[legs.length-1].eta - departHour : 0,
+    km: legs.length ? legs[legs.length-1].km : 0,
+    maxGust: scored.length ? Math.max.apply(null, scored.map(function(l){ return l.gust||0; })) : null,
+    minTemp: scored.length ? Math.min.apply(null, scored.map(function(l){ return l.temp!=null?l.temp:99; })) : null
+  };
+}
+
+/* ---------------- render ---------------- */
+
+function renderManager(){
+  var m = document.getElementById("mgr");
+  if(!state.routes.length){
+    m.innerHTML = '<div class="note">Nothing loaded yet. Import a GPX, or type a handful of stops.</div>';
+    return;
+  }
+  m.innerHTML = state.routes.map(function(r){
+    var cum = cumulative(r.pts);
+    var km = Math.round(cum[cum.length-1]*winding(r.kmh));
+    return '<div class="mgr">'+
+      '<div class="mgrname">'+esc(r.name)+'<div class="mgrkm">'+km+' km, '+r.pts.length+' stops</div></div>'+
+      '<input class="spd" type="number" min="20" max="140" step="5" value="'+r.kmh+'" data-spd="'+r.id+'" />'+
+      '<button class="del" data-del="'+r.id+'">remove</button></div>';
+  }).join("");
+}
+
+function render(){
+  renderManager();
+  document.getElementById("controls").style.display = state.routes.length ? "block" : "none";
+  document.getElementById("date").value = state.date;
+  document.getElementById("depart").value = state.depart;
+  document.getElementById("departLabel").textContent = clock(state.depart);
+  document.getElementById("sub").textContent = state.routes.length
+    ? (state.routes.length===1 ? "1 route" : state.routes.length+" routes compared")+", "+
+      (state.issued ? "issued "+pad(state.issued.getHours())+":"+pad(state.issued.getMinutes()) : "loading")
+    : "no routes loaded";
+
+  document.getElementById("chips").innerHTML = MODELS.map(function(m){
+    var off = state.dead.indexOf(m.id)>=0;
+    var on = state.active.indexOf(m.id)>=0 && !off;
+    return '<button class="chip'+(on?" on":"")+(off?" dead":"")+'" data-model="'+m.id+'" title="'+m.detail+'">'+m.label+'</button>';
+  }).join("");
+
+  var probs = MODELS.filter(function(m){ return state.status[m.id] && state.status[m.id]!=="ok"; });
+  document.getElementById("deadNote").innerHTML = probs.length
+    ? '<div class="warn" style="padding-top:8px">'+probs.map(function(m){
+        return m.label+": "+esc(state.status[m.id]); }).join("<br>")+'</div>' : "";
+
+  var status = document.getElementById("status");
+  if(state.net && state.net!=="ok" && state.routes.length){
+    status.innerHTML = '<div class="panel"><span class="lbl">Connection</span><div class="warn">'+
+      esc(state.net)+'</div><div class="hair"></div><button class="btn" id="retry">Try again</button></div>';
+  } else if(state.loading){
+    status.innerHTML = '<div class="panel"><span class="lbl" style="margin:0">Fetching models…</span></div>';
+  } else if(state.error){
+    status.innerHTML = '<div class="panel"><div class="warn">'+esc(state.error)+
+      '</div><div class="hair"></div><button class="btn" id="retry">Load again</button></div>';
+  } else status.innerHTML = "";
+  var retry = document.getElementById("retry");
+  if(retry) retry.addEventListener("click", load);
+
+  var out = document.getElementById("routes");
+  if(!state.routes.length){
+    out.innerHTML = '<div class="panel empty"><div class="big">No route yet</div>'+
+      '<div class="small">Export a GPX from Kurviger, Calimoto or Komoot and load it above. '+
+      'Load several to compare variants of the same trip side by side. '+
+      'Routes are remembered on this device.</div></div>';
+    return;
+  }
+  if(state.loading || (state.net && state.net!=="ok")){ out.innerHTML=""; return; }
+
+  var briefs = state.routes.map(function(r){ return { route:r, brief:build(r, state.depart) }; });
+  var ranked = briefs.filter(function(b){ return b.brief.worst!=null; })
+                     .sort(function(a,b){ return a.brief.score-b.brief.score; });
+  var pick = (ranked.length>1) ? ranked[0].route.id : null;
+
+  out.innerHTML = briefs.map(function(b){
+    var r=b.route, br=b.brief, lv = br.worst!=null ? LEVELS[br.worst] : null;
+    var html = '<div class="route"><div class="rhead"><div class="rname">'+esc(r.name)+'</div>';
+    if(lv) html += '<div class="verdict" style="background:'+lv.color+'">'+
+      (r.id===pick ? "Best · " : "")+lv.label+'</div>';
+    html += '</div>';
+    if(r.note) html += '<div class="rnote">'+esc(r.note)+'</div>';
+
+    html += '<div class="stats">'+
+      '<div class="stat"><b>'+br.km+'</b><span>km</span></div>'+
+      '<div class="stat"><b>'+(br.hours?br.hours.toFixed(1):"–")+'</b><span>hours</span></div>'+
+      '<div class="stat"><b>'+(br.maxGust!=null?Math.round(br.maxGust):"–")+'</b><span>max gust</span></div>'+
+      '<div class="stat"><b>'+(br.minTemp!=null&&br.minTemp<99?Math.round(br.minTemp)+"°":"–")+'</b><span>min temp</span></div>'+
+    '</div>';
+
+    br.legs.forEach(function(l,i){
+      var c = l.level!=null ? LEVELS[l.level].color : "#A8B3AD";
+      var key = r.id+"-"+i;
+      html += '<div class="leg'+(i===0?" first":"")+(i===br.legs.length-1?" last":"")+
+              '"><div class="spine"><div class="node" style="background:'+c+'"></div></div><div class="legbody">';
+      html += '<div class="legtop"><div class="eta">'+clock(l.eta)+'</div><div class="place">'+esc(l.name)+
+              '</div><div class="elev">'+(l.elev!=null?Math.round(l.elev)+" m":"")+'</div></div>';
+      if(l.level==null){
+        html += '<div class="metrics" style="color:var(--soft)">no model data</div>';
+      } else {
+        var pTxt = "–";
+        if(l.precip!=null){
+          pTxt = l.precip.toFixed(1)+" mm";
+          if(l.precipHi!=null && l.precipHi-l.precip>=0.4) pTxt += "/"+l.precipHi.toFixed(1);
+        }
+        html += '<div class="metrics">'+(l.temp!=null?l.temp.toFixed(0)+"°C":"–")+"   "+pTxt+
+                "   G"+(l.gust!=null?Math.round(l.gust):"–")+"   CAPE "+
+                (l.cape!=null?Math.round(l.cape):"–")+'</div>';
+        if(l.flags.length) html += '<div class="flags" style="color:'+c+'">'+l.flags.join(" · ")+'</div>';
+        if(l.worst>l.level) html += '<div class="flags" style="color:var(--soft)">one model wetter than the rest</div>';
+        html += '<div class="agree">'+l.per.map(function(p){
+          var m = MODELS.filter(function(x){return x.id===p.mid;})[0];
+          return '<div class="sq" title="'+(m?m.label:"")+'" style="background:'+LEVELS[p.level].color+'"></div>';
+        }).join("")+'<span class="agreelbl">'+l.concern+" of "+l.total+' flag it</span></div>';
+        html += '<button class="toggle" data-key="'+key+'">'+(state.open[key]?"hide models":"per model")+'</button>';
+        if(state.open[key]){
+          html += '<div class="detail">'+l.per.map(function(p){
+            var m = MODELS.filter(function(x){return x.id===p.mid;})[0];
+            return '<div class="drow"><span class="dm">'+(m?m.label:p.mid)+'</span><span>'+
+              (p.v.temp!=null?p.v.temp.toFixed(0):"–")+"°  "+
+              (p.v.precip!=null?p.v.precip.toFixed(1):"–")+"mm  G"+
+              (p.v.gust!=null?Math.round(p.v.gust):"–")+"  CAPE "+
+              (p.v.cape!=null?Math.round(p.v.cape):"–")+
+              (p.v.fl!=null?"  0°C "+Math.round(p.v.fl)+"m":"")+'</span></div>';
+          }).join("")+'</div>';
+        }
+      }
+      html += '</div></div>';
+    });
+
+    if(br.worst!=null){
+      var win=[]; for(var h=5;h<=16;h++) win.push({h:h, score:build(r,h).score});
+      var mn = Math.min.apply(null, win.map(function(w){return w.score;}));
+      var mx = Math.max(1, Math.max.apply(null, win.map(function(w){return w.score;})));
+      html += '<span class="lbl" style="padding:10px 12px 0;margin:0">Departure window</span><div class="window">'+
+        win.map(function(w){
+          var frac=w.score/mx, best=w.score===mn;
+          return '<div class="wcell'+(best?" best":"")+'"><div style="height:'+(8+frac*18)+
+            'px;background:'+(best?"#1F7A4C":"#131E29")+';opacity:'+(0.25+frac*0.6).toFixed(2)+
+            '"></div><div class="whr">'+w.h+'</div></div>';
+        }).join("")+'</div>';
+    }
+    return html+'</div>';
+  }).join("");
+}
+
+/* ---------------- route input ---------------- */
+
+function sample(raw, N){
+  var cum = cumulative(raw), total = cum[cum.length-1], out=[];
+  N = Math.min(N, raw.length);
+  for(var i=0;i<N;i++){
+    var target = total*i/(N-1), best=0;
+    for(var j=0;j<cum.length;j++) if(Math.abs(cum[j]-target)<Math.abs(cum[best]-target)) best=j;
+    out.push({ n: raw[best].name || ("Point "+(i+1)), lat:raw[best].lat, lon:raw[best].lon });
+  }
+  return out;
+}
+
+function addRoute(name, pts, kmh, note){
+  state.routes = state.routes.concat([{
+    id: "r"+Date.now()+Math.floor(Math.random()*1000),
+    name: name, pts: pts, kmh: kmh||60, note: note||""
+  }]);
+  saveRoutes();
+  load();
+}
+
+function handleGpx(file){
+  return new Promise(function(res){
+    var reader = new FileReader();
+    reader.onload = function(){
+      var doc = new DOMParser().parseFromString(String(reader.result), "text/xml");
+      var nodes = Array.prototype.slice.call(doc.getElementsByTagName("trkpt"));
+      if(!nodes.length) nodes = Array.prototype.slice.call(doc.getElementsByTagName("rtept"));
+      if(!nodes.length) nodes = Array.prototype.slice.call(doc.getElementsByTagName("wpt"));
+      var raw = nodes.map(function(el){
+        var nm = el.getElementsByTagName("name")[0];
+        return { lat:parseFloat(el.getAttribute("lat")), lon:parseFloat(el.getAttribute("lon")),
+                 name: nm ? nm.textContent : null };
+      }).filter(function(p){ return isFinite(p.lat) && isFinite(p.lon); });
+      if(raw.length<2){ res(null); return; }
+      var t = doc.getElementsByTagName("name")[0];
+      var nm = (t && t.textContent ? t.textContent : file.name.replace(/\.gpx$/i,"")).trim().slice(0,40);
+      res({ name: nm || "Route", pts: sample(raw, 9), count: raw.length });
+    };
+    reader.onerror = function(){ res(null); };
+    reader.readAsText(file);
+  });
+}
+
+/* ---------------- events ---------------- */
+
+document.getElementById("date").addEventListener("change", function(e){
+  state.date = e.target.value; load();
+});
+document.getElementById("depart").addEventListener("input", function(e){
+  state.depart = parseFloat(e.target.value);
+  document.getElementById("departLabel").textContent = clock(state.depart);
+  render();
+});
+document.getElementById("chips").addEventListener("click", function(e){
+  var b = e.target.closest("[data-model]"); if(!b) return;
+  var id = b.getAttribute("data-model"), i = state.active.indexOf(id);
+  if(i>=0) state.active.splice(i,1); else state.active.push(id);
+  render();
+});
+document.getElementById("routes").addEventListener("click", function(e){
+  var b = e.target.closest("[data-key]"); if(!b) return;
+  var k = b.getAttribute("data-key"); state.open[k] = !state.open[k]; render();
+});
+document.getElementById("mgr").addEventListener("click", function(e){
+  var d = e.target.closest("[data-del]"); if(!d) return;
+  var id = d.getAttribute("data-del");
+  state.routes = state.routes.filter(function(r){ return r.id!==id; });
+  saveRoutes(); load();
+});
+document.getElementById("mgr").addEventListener("change", function(e){
+  var s = e.target.closest("[data-spd]"); if(!s) return;
+  var id = s.getAttribute("data-spd"), v = parseInt(s.value,10);
+  if(!isFinite(v) || v<20) return;
+  state.routes.forEach(function(r){ if(r.id===id) r.kmh = v; });
+  saveRoutes(); render();
+});
+document.getElementById("gpxBtn").addEventListener("click", function(){
+  document.getElementById("gpx").click();
+});
+document.getElementById("gpx").addEventListener("change", function(e){
+  var files = Array.prototype.slice.call(e.target.files||[]);
+  e.target.value = "";
+  if(!files.length) return;
+  Promise.all(files.map(handleGpx)).then(function(rs){
+    var added = rs.filter(Boolean);
+    if(!added.length){ state.error = "No usable track or route points in that file."; render(); return; }
+    added.forEach(function(a){
+      state.routes = state.routes.concat([{
+        id:"r"+Date.now()+Math.floor(Math.random()*1000), name:a.name, pts:a.pts, kmh:60,
+        note:a.count+" GPX points, sampled to "+a.pts.length
+      }]);
+    });
+    saveRoutes(); load();
+  });
+});
+document.getElementById("coordBtn").addEventListener("click", function(){
+  var box = document.getElementById("coordBox");
+  box.style.display = box.style.display==="none" ? "block" : "none";
+});
+document.getElementById("coordAdd").addEventListener("click", function(){
+  var lines = document.getElementById("coordText").value.split("\n");
+  var pts = [];
+  lines.forEach(function(line){
+    if(!line.trim()) return;
+    var parts = line.split(",").map(function(x){ return x.trim(); });
+    var lon = parseFloat(parts.pop()), lat = parseFloat(parts.pop());
+    var name = parts.join(", ") || (lat.toFixed(3)+" "+lon.toFixed(3));
+    if(isFinite(lat) && isFinite(lon)) pts.push({ n:name, lat:lat, lon:lon });
+  });
+  if(pts.length<2){ state.error = "Need at least two lines of name, lat, lon."; render(); return; }
+  var name = document.getElementById("coordName").value.trim() || "Route";
+  document.getElementById("coordText").value = "";
+  document.getElementById("coordName").value = "";
+  document.getElementById("coordBox").style.display = "none";
+  addRoute(name, pts, 60, pts.length+" stops entered by hand");
+});
+
+state.routes = readRoutes();
+render();
+if(state.routes.length) load();
+</script>
+</body>
+</html>
