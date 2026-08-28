@@ -2,9 +2,11 @@
 
 A weather briefing for a motorcycle route, not for a place.
 
-Point forecasts answer "what is the weather in xyz". That is the wrong question when you are riding, because you will be in one place at 13:40 and somewhere over a 1883 m pass at 11:10. This tool forecasts **every stop at the hour you actually arrive there**, compares four numerical weather models at each one, and shows you where they disagree.
+Point forecasts answer "what is the weather in xyz". That is the wrong question when you are riding/driving, because you will be in one place at 13:40 and somewhere over a 1883 m pass at 11:10. This tool forecasts **every stop at the hour you actually arrive there**, compares four numerical weather models at each one, and shows you where they disagree.
 
 Single HTML file. No build step, no dependencies, no backend, no API key. Everything runs in the browser.
+
+Optimized for motorcycling. 
 
 ## What it does
 
